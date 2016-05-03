@@ -47,6 +47,14 @@ def get_time(soup):
 	except AttributeError:
 		return "NA"
 
+def get_date(soup):
+	date = soup.select("head title")
+	try:
+		date = re.search(r"\| .+ \|", date[0].text).group().strip("|").strip()
+		return date
+	except Exception as e:
+		return "NA"
+
 def get_dist_going(soup):
 	dist_going = soup.select("body div div div div.popUp div.popUpHead ul li")
 	try:
@@ -142,6 +150,7 @@ def get_features(race):
 	soup = BeautifulSoup(page, "html.parser")
 
 	racecourse = get_racecourse(soup)
+	date = get_date(soup)
 	time = get_time(soup)
 	dist_going = get_dist_going(soup)
 	position = get_position(soup)
@@ -150,7 +159,7 @@ def get_features(race):
 	age_weight_trainer = get_age_weight_trainer(soup)
 	or_ts_jockey = get_or_ts_jockey(soup)
 
-	return {"racecourse": racecourse, "time": time, "distance": dist_going["dist"],
+	return {"racecourse": racecourse, "date": date, "time": time, "distance": dist_going["dist"],
 	"going": dist_going["ground"] , "position": position, "name": name, 
 	"country": country_sp["country"], "sp": country_sp["sp"], "age_weight_trainer": age_weight_trainer,
 	"or_ts_jockey": or_ts_jockey}
@@ -158,7 +167,7 @@ def get_features(race):
 def get_records(race):
 	horses = list()
 	for i in range(len(race["name"])):
-		horses.append({"racecourse": race["racecourse"], "time": race["time"], 
+		horses.append({"racecourse": race["racecourse"], "date": race["date"], "time": race["time"], 
 			"distance": race["distance"], "going": race["going"], "position": race["position"][i],
 			"name": race["name"][i], "country": race["country"][i], "sp": race["sp"][i],
 			"age": race["age_weight_trainer"][i][0], "weight": race["age_weight_trainer"][i][1],
@@ -168,14 +177,14 @@ def get_records(race):
 	return horses
 
 for j in valid:
+	RACE = "Raw_HTML/" + str(j) + ".txt"
 	with open("horses.json", "a") as f:
 
 		try:
 			RACE = "Raw_HTML/" + str(j) + ".txt"
 			race = get_features(RACE)
-			# print get_records(race)
 			for i in range(len(race["name"])):
-				json.dump({"racecourse": race["racecourse"], "time": race["time"], 
+				json.dump({"racecourse": race["racecourse"], "date": race["date"], "time": race["time"], 
 				"distance": race["distance"], "going": race["going"], "position": race["position"][i],
 				"name": race["name"][i], "country": race["country"][i], "sp": race["sp"][i],
 				"age": race["age_weight_trainer"][i][0], "weight": race["age_weight_trainer"][i][1],
