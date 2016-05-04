@@ -72,7 +72,8 @@ def get_dist_going(soup):
 
 def get_position(soup):
 	positions = list()
-	for position in soup.find_all("td", {"class": "nowrap noPad"}):
+	positions_html = soup.select("tbody tr td h3")
+	for position in positions_html:
 		try:
 			positions.append(position.text.strip())
 		except Exception:
@@ -118,6 +119,8 @@ def get_age_weight_trainer(soup):
 		except AttributeError:
 			weight = "NA"
 		trainer = row[2].text.strip()
+		if trainer == "" or trainer == " ":
+			trainer = "NA"
 	
 		awt.append([age, weight, trainer])
 
@@ -138,6 +141,8 @@ def get_or_ts_jockey(soup):
 			jockey = row[2].a.text
 		else:
 			jockey = row[2].text
+		if jockey == "" or jockey == " ":
+			jockey = "NA"
 	
 		otj.append([official_rating, top_speed, jockey])
 
@@ -181,7 +186,6 @@ for j in valid:
 	with open("horses.json", "a") as f:
 
 		try:
-			RACE = "Raw_HTML/" + str(j) + ".txt"
 			race = get_features(RACE)
 			for i in range(len(race["name"])):
 				json.dump({"racecourse": race["racecourse"], "date": race["date"], "time": race["time"], 
