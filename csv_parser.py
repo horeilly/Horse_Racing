@@ -1,5 +1,11 @@
 import csv
 import re
+from datetime import datetime
+
+
+def parse_date(date):
+    return datetime.strptime(date, "%d %B %Y").strftime("%Y-%m-%d")
+
 
 def parse_time(time):
     if int(time.split(":")[0]) < 11:
@@ -26,11 +32,11 @@ def parse_weight(weight):
 
 
 i = 0
-with open("horses.csv", "rb") as horse_csv:
-    with open("parsed_horses.csv", "wb") as parsed_horses:
+with open("unparsed_horses.csv", "rb") as unparsed_horse_csv:
+    with open("horses2.csv", "wb") as horses:
 
-        horsereader = csv.reader(horse_csv, delimiter=",")
-        horsewriter = csv.writer(parsed_horses, delimiter=",")
+        horsereader = csv.reader(unparsed_horse_csv, delimiter=",")
+        horsewriter = csv.writer(horses, delimiter=",")
 
         horsewriter.writerow(["DateTime", "Racecourse", "Ground", "Distance", "Horse", "Position", "Jockey", "Trainer", 
             "Weight", "Age", "Country", "OR"])
@@ -39,7 +45,7 @@ with open("horses.csv", "rb") as horse_csv:
         for row in horsereader:
             try:
                 int(row[6])
-                horse = [row[0] + " " + parse_time(row[1])] + row[2:4] + [parse_dist(row[4])] + row[5:9] + \
+                horse = [parse_date(row[0]) + " " + parse_time(row[1])] + row[2:4] + [parse_dist(row[4])] + row[5:9] + \
                 [parse_weight(row[9])] + row[10:-1]
                 horsewriter.writerow(horse)
 
