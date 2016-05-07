@@ -82,3 +82,9 @@ INSERT INTO TABLE horse_races SELECT * FROM temphorses;
 DROP TABLE temphorses;
 
 
+-- ************************************************
+-- * set up empty edge table for the Pig script to save data into
+-- ************************************************
+
+CREATE TABLE edge_table (winner STRING,loser STRING,tot_weight BIGINT) STORED AS ORC;
+
