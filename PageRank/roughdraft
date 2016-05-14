@@ -1,0 +1,115 @@
+-- *******************************************************************
+-- * setup stage
+-- *******************************************************************
+
+SET hive.cli.print.header=true;
+-- * set dampener level
+SET dampener=0.85;
+-- * set s3 location of edges csv file
+SET x=s3://horses/edgelist/edges/;
+-- * set s3 location of output file
+SET outpath=s3://horses/hive/;
+SET scorepath=${hiveconf:outpath}scores3;
+SET resultspath=${hiveconf:outpath}results3;
+
+
+-- vectorization????
+-- set hive.vectorized.execution.enabled = true;
+-- set hive.vectorized.execution.reduce.enabled = true;
+
+
+
+-- * clear environment 
+DROP TABLE temp_edges;
+DROP TABLE edges;
+DROP TABLE Horse_Ranks;
+
+-- * load csv into external table
+CREATE EXTERNAL TABLE temp_edges (winner STRING, loser STRING, weight INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '${hiveconf:x}';
+
+-- * create local table from external table
+-- * use ORC and cluster by winner for optimization
+CREATE TABLE edges STORED AS ORC AS SELECT * FROM temp_edges CLUSTER BY winner;
+
+-- * drop the temporary table
+DROP TABLE temp_edges;
+
+-- * initialize ranks table for all horses
+DROP TABLE Horse_Ranks;
+
+CREATE TABLE Horse_Ranks STORED AS ORC AS SELECT loser AS horse, 1.0 AS rank, SUM(weight) AS out_degree FROM edges GROUP BY loser ORDER BY horse;
+
+-- * initialize ranks table for horses that have never won 
+-- * (for unioning later, to ensure we don't lose horses on iteration)
+DROP TABLE Losers_Ranks;
+
+CREATE TABLE Losers_Ranks STORED AS ORC AS SELECT losers.horse AS horse, (1-${hiveconf:dampener}) AS rank, losers.out_degree as out_degree FROM (SELECT DISTINCT winner AS horse FROM edges) AS winners RIGHT OUTER JOIN Horse_Ranks AS losers ON (winners.horse = losers.horse) WHERE ISNULL(winners.horse);
+
+
+-- * set up table for measuring convergence and timing
+
+DROP TABLE monitering;
+CREATE TABLE monitering (ts TIMESTAMP, tot_diffs DOUBLE);
+
+DROP TABLE prev_table;
+CREATE TABLE prev_ranks AS SELECT * FROM horse_ranks;
+
+-- *******************************************************************
+-- * iteration stage
+-- *******************************************************************
+
+-- * update horse_ranks
+INSERT OVERWRITE TABLE horse_ranks SELECT * FROM (SELECT new.horse AS horse, new.rank AS rank, old.out_degree AS out_degree FROM (SELECT horse, (1-${hiveconf:dampener}) + ${hiveconf:dampener}*SUM(item) AS rank FROM (SELECT edges.winner AS horse, edges.weight*(ranks.rank/ranks.out_degree) AS item FROM edges AS edges JOIN horse_ranks AS ranks ON (edges.loser = ranks.horse)) AS foo GROUP BY horse) AS new JOIN horse_ranks AS old ON (new.horse = old.horse) UNION ALL SELECT * FROM losers_ranks) AS unionResult;
+
+-- ********************
+-- * update explanation
+-- ********************
+
+-- SELECT * FROM 
+-- 	(SELECT new.horse AS horse, new.rank AS rank, old.out_degree AS out_degree 
+-- 		FROM 
+-- 		(SELECT horse, (1-${hiveconf:dampener}) + ${hiveconf:dampener}*SUM(item) AS rank 
+-- 			FROM 
+-- 			(SELECT edges.winner AS horse, edges.weight*(ranks.rank/ranks.out_degree) AS item 
+-- 				FROM 
+-- 					edges AS edges 
+-- 				JOIN 
+-- 					horse_ranks AS ranks 
+-- 				ON (edges.loser = ranks.horse)) AS foo 
+-- 			GROUP BY horse) AS new 
+-- 		JOIN 
+-- 			horse_ranks AS old 
+-- 		ON (new.horse = old.horse) 
+-- 	UNION ALL SELECT * FROM losers_ranks) AS unionResult;
+
+-- first, join edges to ranks, and then calculate (rank/outdegree) for 
+-- each losing horse, mulitplying by weight, then group by winning horse
+-- and sum each score, multiplying/adding with dampener. 
+-- join this result with prevoius rank table to get out_degrees for each 
+-- horse, and then union result with table of horses that never won a 
+-- race to produce new horse_rank table with same number of rows
+
+-- * update monitering with new differences
+
+INSERT INTO TABLE monitering SELECT unix_timestamp() AS ts, SUM(diff) AS tot_diffs FROM (SELECT prev.horse AS horse, ABS(prev.rank - curr.rank) AS diff FROM prev_ranks AS prev JOIN horse_ranks AS curr ON (prev.horse = curr.horse)) AS foo;
+
+INSERT OVERWRITE TABLE prev_ranks SELECT * FROM horse_ranks;
+
+-- *******************************************************************
+-- * writeout stage
+-- *******************************************************************
+
+DROP TABLE final_results;
+DROP TABLE final_scores;
+
+CREATE EXTERNAL TABLE final_results (ts BIGINT, tot_ranks DOUBLE) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LINES terminated by '\n' STORED AS TEXTFILE LOCATION '${hiveconf:resultspath}';
+
+CREATE EXTERNAL TABLE final_scores (horse STRING, rank DOUBLE, out_degree bigint) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LINES terminated by '\n' STORED AS TEXTFILE LOCATION '${hiveconf:scorepath}';
+
+INSERT OVERWRITE TABLE final_results SELECT * FROM monitering;
+
+INSERT OVERWRITE TABLE final_scores SELECT * FROM horse_ranks;
+
+
+
+
