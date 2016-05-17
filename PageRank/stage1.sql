@@ -28,7 +28,9 @@ CREATE EXTERNAL TABLE temp_edges (winner STRING, loser STRING, weight INT) ROW F
 
 -- * create local table from external table
 -- * use ORC and cluster by winner for optimization
-CREATE TABLE edges STORED AS ORC AS SELECT * FROM temp_edges CLUSTER BY winner;
+-- * note, there's one edge with a huge negative weight called nobody 
+-- * for wierd races, filter that out with the where condition
+CREATE TABLE edges STORED AS ORC AS SELECT * FROM temp_edges WHERE weight > 0 CLUSTER BY winner;
 
 -- * drop the temporary table
 DROP TABLE temp_edges;
@@ -49,7 +51,7 @@ CREATE TABLE Losers_Ranks STORED AS ORC AS SELECT losers.horse AS horse, (1-${hi
 DROP TABLE monitering;
 CREATE TABLE monitering (ts TIMESTAMP, tot_diffs DOUBLE);
 
-DROP TABLE prev_table;
+DROP TABLE prev_ranks;
 CREATE TABLE prev_ranks AS SELECT * FROM horse_ranks;
 
 
